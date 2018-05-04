@@ -33,48 +33,53 @@ class DomainInfo:
 		self.renew = renew
 
 def check_tld_status(domain):
+	params = {
+			'domain': domain
+	}
+	info = requests.get('https://www.ovh.es/engine/apiv6/order/cart/%s/domain' % cart_id, params=params).json()
+
+	# Get first (and only) offer
+	try:
+		info = info[0]
+	except:
+		return None
+
+	# Skip if not available
+	if not info['orderable']:
+		return None
+
+	# Extract price
+	orderprice, renewprice = None, None
+	for price in info['prices']:
+		if price['label'] == 'TOTAL':
+			orderprice = price['price']['value']
+		elif price['label'] == 'RENEW':
+			renewprice = price['price']['value']
+
+	# Skip if any pricing information is not available
+	if orderprice is None or renewprice is None:
+		return None
+
+	return DomainInfo(domain, orderprice, renewprice)
+
+def check_and_update(domain):
 	global domain_info, failed_domains
 
 	with print_lock:
 		print(RESETLINE + '%i/%i: %s' % (len(domain_info), failed_domains, domain), file=sys.stderr, end='', flush=True)
 
 	try:
-		params = {
-				'domain': domain
-		}
-		info = requests.get('https://www.ovh.es/engine/apiv6/order/cart/%s/domain' % cart_id, params=params).json()
-
-		# Get first (and only) offer
-		try:
-			info = info[0]
-		except:
-			with data_lock:
-				failed_domains += 1
-			return
-
-		# Skip if not available
-		if not info['orderable']:
-			return
-
-		# Extract price
-		orderprice, renewprice = None, None
-		for price in info['prices']:
-			if price['label'] == 'TOTAL':
-				orderprice = price['price']['value']
-			elif price['label'] == 'RENEW':
-				renewprice = price['price']['value']
-
-		# Skip if any pricing information is not available
-		if orderprice is None or renewprice is None:
-			with data_lock:
-				failed_domains += 1
-			return
-
-		with data_lock:
-			domain_info.append(DomainInfo(domain, orderprice, renewprice))
+		info = check_tld_status(domain)
 	except Exception as e:
 		with print_lock:
 			traceback.print_last()
+		info = None
+
+	with data_lock:
+		if info is not None:
+			domain_info.append(info)
+		else:
+			failed_domains += 1
 
 with ThreadPoolExecutor(max_workers=10) as executor:
 	for domain in sys.stdin:
@@ -84,7 +89,7 @@ with ThreadPoolExecutor(max_workers=10) as executor:
 		if not '.' in domain:
 			continue
 
-		future = executor.submit(check_tld_status, domain)
+		future = executor.submit(check_and_update, domain)
 
 # Sort according to renew now
 domain_info.sort(key=lambda x: max(x.renew, x.order))
