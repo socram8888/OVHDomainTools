@@ -2,8 +2,7 @@
 
 import requests
 import sys
-from queue import Queue
-from threading import Lock, Thread
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 import traceback
 

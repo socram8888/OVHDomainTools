@@ -20,7 +20,6 @@ parser.add_argument('-s', '--include-sld', help='include second-level domains', 
 parser.add_argument('-i', '--include-intl', help='include internationalized TLDs', action='store_const', const=True)
 
 args = parser.parse_args()
-print(args)
 
 print('Fetching TLD list... ', file=sys.stderr, end='', flush=True)
 tlds = requests.get('https://www.ovh.es/engine/apiv6/domain/data/extension?country=ES').json()
