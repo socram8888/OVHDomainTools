@@ -2,12 +2,18 @@
 
 from cmd import Cmd
 from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 from threading import Lock
 import json
 import re
 import requests
 import sys
 import traceback
+
+class Sorting(Enum):
+	NONE = 0
+	PRICE = 1
+	ALPHABETIC = 2
 
 class DomainInfo:
 	def __init__(self, name, order, renew):
@@ -30,6 +36,10 @@ class DomainCmd(Cmd):
 		self.include_sld = False
 		self.max_length = None
 
+		# Sorting
+		self.sorting = Sorting.NONE
+		self.sort_ascendent = True
+
 		# Status querying
 		self.cart_id = None
 		self.data_lock = Lock()
@@ -46,6 +56,31 @@ class DomainCmd(Cmd):
 			sys.exit(0)
 
 		self.do_check(arg)
+
+	def do_maxlen(self, arg):
+		arg = arg.strip().casefold()
+
+		if arg != '':
+			if any(x for x in DomainCmd.FALSES if x.startswith(arg)):
+				value = None
+
+			else:
+				try:
+					value = int(arg)
+				except ValueError:
+					print('Invalid integer "%s"' % arg, file=sys.stderr)
+					return
+
+				if value < 4:
+					print('Max length may not be less than 4', file=sys.stderr)
+					return
+
+			self.max_length = value
+
+		if self.max_length is None:
+			print('Max TLD length is disabled', file=sys.stderr)
+		else:
+			print('Max TLD length is %s' % str(self.max_length).lower(), file=sys.stderr)
 
 	def do_intl(self, arg):
 		arg = arg.strip()
@@ -97,7 +132,7 @@ class DomainCmd(Cmd):
 			print('got %d' % len(tlds), file=sys.stderr)
 			return True
 		except Exception as e:
-			print('cannot fetch')
+			print('cannot fetch', file=sys.stderr)
 			traceback.print_last()
 			return False
 
