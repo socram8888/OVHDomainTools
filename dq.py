@@ -242,9 +242,6 @@ class DomainCmd(Cmd):
 
 		# Reset variables
 		if self.sorting == Sorting.ALPHABETIC:
-			# use sorted() instead of .sort() to convert from set to list
-			to_check = sorted(to_check)
-
 			self._print_domain_header()
 			self._run_domain_threads(self._check_and_update, to_check)
 		else:
@@ -309,7 +306,7 @@ class DomainCmd(Cmd):
 			for tld in valid_tlds:
 				to_check.add('%s.%s' % (domain, tld))
 
-		return list(to_check)
+		return sorted(to_check)
 
 	def _check_and_update(self, domain):
 		if self.check_aborted:
