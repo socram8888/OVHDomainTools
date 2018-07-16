@@ -11,7 +11,6 @@ import sys
 import traceback
 
 class Sorting(Enum):
-	NONE = 0
 	PRICE = 1
 	RENEW = 2
 	ORDER = 3
@@ -40,11 +39,7 @@ class DomainCmd(Cmd):
 			'price': Sorting.PRICE,
 			'renew': Sorting.RENEW,
 			'order': Sorting.ORDER,
-			'alphabetic': Sorting.ALPHABETIC,
-			'no': Sorting.NONE,
-			'disabled': Sorting.NONE,
-			'false': Sorting.NONE,
-			'off': Sorting.NONE
+			'alphabetic': Sorting.ALPHABETIC
 	}
 	SORTING_DIRECTION = {
 			'ascending': True,
@@ -62,7 +57,7 @@ class DomainCmd(Cmd):
 		self.max_length = None
 
 		# Sorting
-		self.sorting = Sorting.NONE
+		self.sorting = Sorting.ALPHABETIC
 		self.sort_ascendending = True
 
 		# Status querying
@@ -71,6 +66,7 @@ class DomainCmd(Cmd):
 		self.print_lock = Lock()
 		self.domain_info = None
 		self.failed_domains = 0
+		self.check_aborted = False
 
 	# Do nothing on empty line
 	def emptyline(self):
@@ -99,7 +95,7 @@ class DomainCmd(Cmd):
 					print('Invalid integer "%s"' % arg, file=sys.stderr)
 					return
 
-				if value < 4:
+				if value < 2:
 					print('Max length may not be less than 4', file=sys.stderr)
 					return
 			else:
@@ -181,10 +177,7 @@ class DomainCmd(Cmd):
 			self.sorting = new_sorting
 			self.sort_ascendending = new_ascending
 
-		if self.sorting == Sorting.NONE:
-			print('Sorting disabled', file=sys.stderr)
-		else:
-			print('Sorting by %s %s' % (self.sorting.name.lower(), 'ascending' if self.sort_ascendending else 'descending'))
+		print('Sorting by %s %s' % (self.sorting.name.lower(), 'ascending' if self.sort_ascendending else 'descending'))
 
 	def do_updatetld(self, arg):
 		self._fetch_tlds()
@@ -195,6 +188,7 @@ class DomainCmd(Cmd):
 		try:
 			tlds = requests.get('https://www.ovh.es/engine/apiv6/domain/data/extension?country=ES').json()
 			self.all_tlds = [tld.encode('utf-8').decode('idna').lower() for tld in tlds]
+			self.all_tlds.sort()
 			print('got %d' % len(tlds), file=sys.stderr)
 			return True
 		except Exception as e:
@@ -247,24 +241,45 @@ class DomainCmd(Cmd):
 		print('got %s' % self.cart_id, file=sys.stderr)
 
 		# Reset variables
-		if self.sorting == Sorting.NONE:
+		if self.sorting == Sorting.ALPHABETIC:
+			# use sorted() instead of .sort() to convert from set to list
+			to_check = sorted(to_check)
+
 			self._print_domain_header()
-			with ThreadPoolExecutor(max_workers=10) as executor:
-				for domain in to_check:
-					executor.submit(self._check_and_update, domain)
+			self._run_domain_threads(self._check_and_update, to_check)
 		else:
 			self.domain_info = []
 			self.failed_domains = 0
 
-			with ThreadPoolExecutor(max_workers=10) as executor:
-				for domain in to_check:
-					executor.submit(self._check_and_update_sorted, domain)
+			self._run_domain_threads(self._check_and_update_sorted, to_check)
 
-			self._sort_domain_list()
-			self._print_process()
-			self._print_domain_header()
-			for info in self.domain_info:
-				self._print_domain_entry(info)
+			if not self.check_aborted:
+				self._sort_domain_list()
+				self._print_process()
+				self._print_domain_header()
+				for info in self.domain_info:
+					self._print_domain_entry(info)
+
+	def _run_domain_threads(self, func, to_check):
+		self.check_aborted = False
+		executor = ThreadPoolExecutor(max_workers=10)
+
+		for domain in to_check:
+			try:
+				executor.submit(func, domain)
+			except KeyboardInterrupt:
+				print('Aborting, hold on...', file=sys.stderr)
+				self.check_aborted = True
+				break
+
+		while True:
+			try:
+				executor.shutdown()
+				break
+			except KeyboardInterrupt:
+				print('Aborting, hold on...', file=sys.stderr)
+				self.check_aborted = True
+				pass
 
 	def _print_process(self, line=None):
 		print(DomainCmd.RESETLINE, file=sys.stderr, end='', flush=True)
@@ -294,9 +309,12 @@ class DomainCmd(Cmd):
 			for tld in valid_tlds:
 				to_check.add('%s.%s' % (domain, tld))
 
-		return to_check
+		return list(to_check)
 
 	def _check_and_update(self, domain):
+		if self.check_aborted:
+			return
+
 		try:
 			info = self._check_domain_status(domain)
 		except Exception as e:
@@ -309,6 +327,9 @@ class DomainCmd(Cmd):
 				self._print_domain_entry(info)
 
 	def _check_and_update_sorted(self, domain):
+		if self.check_aborted:
+			return
+
 		with self.print_lock:
 			self._print_process('%i/%i: %s' % (len(self.domain_info), self.failed_domains, domain))
 
@@ -362,8 +383,6 @@ class DomainCmd(Cmd):
 			func = lambda x: x.renew
 		elif self.sorting == Sorting.ORDER:
 			func = lambda x: x.order
-		elif self.sorting == Sorting.ALPHABETIC:
-			func = lambda x: x.name
 		else:
 			raise Exception('What the fuck %s' % str(self.sorting))
 
