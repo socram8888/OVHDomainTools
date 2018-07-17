@@ -2,6 +2,8 @@
 
 from cmd import Cmd
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from datetime import timedelta
 from enum import Enum
 from threading import Lock
 import json
@@ -46,6 +48,7 @@ class DomainCmd(Cmd):
 			'descending': False
 	}
 	RESETLINE = "\x1b[1K\r"
+	CART_TIMEOUT = timedelta(minutes=5)
 
 	def __init__(self):
 		super().__init__()
@@ -60,8 +63,12 @@ class DomainCmd(Cmd):
 		self.sorting = Sorting.ALPHABETIC
 		self.sort_ascendending = True
 
-		# Status querying
+		# Cart id
 		self.cart_id = None
+		self.cart_time = None
+		self.cart_lock = Lock()
+
+		# Status querying
 		self.data_lock = Lock()
 		self.print_lock = Lock()
 		self.domain_info = None
@@ -225,20 +232,8 @@ class DomainCmd(Cmd):
 
 	def do_check(self, arg):
 		to_check = self._domain_check_list(arg.split())
-		if to_check is None:
+		if not to_check:
 			return
-
-		print('Requesting cart ID... ', file=sys.stderr, end='', flush=True)
-
-		cart_id_response = requests.post('https://www.ovh.es/engine/apiv6/order/cart', json={'description': '_ovhcom_legacy_order_cart_', 'ovhSubsidiary': 'ES'})
-		try:
-			cart_id_response.raise_for_status()
-		except Exception as e:
-			traceback.print_last()
-			return
-
-		self.cart_id = cart_id_response.json()['cartId']
-		print('got %s' % self.cart_id, file=sys.stderr)
 
 		# Reset variables
 		if self.sorting == Sorting.ALPHABETIC:
@@ -344,6 +339,9 @@ class DomainCmd(Cmd):
 				self.failed_domains += 1
 
 	def _check_domain_status(self, domain):
+		if not self._refresh_cart_id():
+			return None
+
 		params = {
 				'domain': domain
 		}
@@ -372,6 +370,28 @@ class DomainCmd(Cmd):
 			return None
 
 		return DomainInfo(domain, orderprice, renewprice)
+
+	def _refresh_cart_id(self):
+		if self.cart_time is None or datetime.utcnow() - self.cart_time >= DomainCmd.CART_TIMEOUT:
+			with self.cart_lock:
+				if self.cart_time is None or datetime.utcnow() - self.cart_time >= DomainCmd.CART_TIMEOUT:
+					return self._fetch_cart_id()
+
+		return True
+
+	def _fetch_cart_id(self):
+		cart_id_response = requests.post('https://www.ovh.es/engine/apiv6/order/cart', json={'description': '_ovhcom_legacy_order_cart_', 'ovhSubsidiary': 'ES'})
+		try:
+			cart_id_response.raise_for_status()
+		except Exception as e:
+			print('Could not get cart ID', file=sys.stderr)
+			traceback.print_last()
+			return False
+
+		self.cart_id = cart_id_response.json()['cartId']
+		self.cart_time = datetime.utcnow()
+
+		return True
 
 	def _sort_domain_list(self):
 		if self.sorting == Sorting.PRICE:
