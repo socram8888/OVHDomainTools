@@ -230,11 +230,46 @@ class DomainCmd(Cmd):
 
 		return True
 
+	def do_hack(self, arg):
+		names = arg.split()
+		if len(names) == 0:
+			print('At least one argument should be provided', file=sys.stderr)
+			return
+
+		to_check = self._domain_hack_list(names)
+		if to_check is not None:
+			print(', '.join(to_check))
+
+	def _domain_hack_list(self, names):
+		valid_tlds = self._get_valid_tlds()
+		if not valid_tlds:
+			print('Unable to get valid TLDs', file=sys.stderr)
+			return None
+
+		to_check = set()
+		for tld in valid_tlds:
+			tldend = tld.replace('.', '')
+			for name in names:
+				if name.endswith(tldend):
+					to_check.add('%s.%s' % (name[:-len(tldend)], tld))
+
+		return sorted(to_check)
+
 	def do_check(self, arg):
 		to_check = self._domain_check_list(arg.split())
 		if not to_check:
 			return
 
+		self._check_list(to_check)
+
+	def do_hackcheck(self, arg):
+		to_check = self._domain_hack_list(arg.split())
+		if not to_check:
+			return
+
+		self._check_list(to_check)
+
+	def _check_list(self, to_check):
 		# Reset variables
 		if self.sorting == Sorting.ALPHABETIC:
 			self._print_domain_header()
