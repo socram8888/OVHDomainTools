@@ -60,6 +60,8 @@ class DomainCmd(Cmd):
 		self.include_intl = False
 		self.include_sld = False
 		self.max_length = None
+		self.max_renew = None
+		self.max_order = None
 
 		# Sorting
 		self.sorting = Sorting.ALPHABETIC
@@ -87,35 +89,45 @@ class DomainCmd(Cmd):
 
 		self.do_check(arg)
 
+	def do_maxorder(self, arg):
+		self._update_optional_number('max_order', int, 'Max order price', 0, arg)
+		self.max_renew = self.max_order
+
 	def do_maxlen(self, arg):
+		self._update_optional_number('max_length', int, 'Max TLD length', 4, arg)
+
+	def _update_optional_number(self, field, fieldType, fieldName, minValue, arg):
 		arg = arg.strip().casefold()
 
 		if arg != '':
-			maxlen_enabled = True
+			enabled = True
 			try:
-				maxlen_enabled = self._parse_bool(arg)
+				enabled = self._parse_bool(arg)
 			except:
 				pass
 
-			if maxlen_enabled:
+			if enabled:
 				try:
-					value = int(arg)
+					value = fieldType(arg)
 				except ValueError:
-					print('Invalid integer "%s"' % arg, file=sys.stderr)
+					print('Cannot parse "%s"' % arg, file=sys.stderr)
 					return
 
-				if value < 2:
-					print('Max length may not be less than 4', file=sys.stderr)
+				if value < minValue:
+					print('%s may not be less than %s' % (fieldName, minValue), file=sys.stderr)
 					return
 			else:
 				value = None
 
-			self.max_length = value
+			self.__dict__[field] = value
 
-		if self.max_length is None:
-			print('Max TLD length is disabled', file=sys.stderr)
 		else:
-			print('Max TLD length is %s' % str(self.max_length).lower(), file=sys.stderr)
+			value = self.__dict__[field]
+
+		if value is None:
+			print('%s is disabled' % fieldName, file=sys.stderr)
+		else:
+			print('%s is %s' % (fieldName, str(value)), file=sys.stderr)
 
 	def do_intl(self, arg):
 		arg = arg.strip()
@@ -219,14 +231,16 @@ class DomainCmd(Cmd):
 	def do_tlds(self, arg):
 		tlds = self._get_valid_tlds()
 		if tlds:
-			print(', '.join(tlds))
+			self._print_domain_header()
+			for tld in tlds:
+				self._print_domain_entry(tld)
 
 	def _get_valid_tlds(self):
 		if self.all_tlds is None:
 			if not self._fetch_tlds():
 				return None
 
-		return [tld.name for tld in self.all_tlds if self._tld_valid(tld)]
+		return [tld for tld in self.all_tlds if self._tld_valid(tld)]
 
 	def _tld_valid(self, tld):
 		if not self.include_sld and '.' in tld.name:
@@ -236,6 +250,12 @@ class DomainCmd(Cmd):
 			return False
 
 		if self.max_length is not None and len(tld.name) > self.max_length:
+			return False
+
+		if self.max_order is not None and tld.order > self.max_order:
+			return False
+
+		if self.max_renew is not None and tld.renew > self.max_renew:
 			return False
 
 		return True
@@ -344,7 +364,7 @@ class DomainCmd(Cmd):
 					return None
 
 			for tld in valid_tlds:
-				to_check.add('%s.%s' % (domain, tld))
+				to_check.add('%s.%s' % (domain, tld.name))
 
 		return sorted(to_check)
 
