@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 from cmd import Cmd
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from datetime import timedelta
 from enum import Enum
 from threading import Lock
+import lxml.html
 import json
 import re
 import requests
@@ -193,10 +195,18 @@ class DomainCmd(Cmd):
 		print('Fetching TLD list... ', file=sys.stderr, end='', flush=True)
 
 		try:
-			tlds = requests.get('https://www.ovh.es/engine/apiv6/domain/data/extension?country=ES').json()
-			self.all_tlds = [tld.encode('utf-8').decode('idna').lower() for tld in tlds]
-			self.all_tlds.sort()
-			print('got %d' % len(tlds), file=sys.stderr)
+			page = lxml.html.fromstring(requests.get('https://www.ovh.es/dominios/precios/').content)
+			self.all_tlds = []
+			for extensionTr in page.xpath("//table[@id='dataTable']/tbody/tr"):
+				tldTd, buyTd, renewTd = extensionTr.findall("td")[:3]
+				tldName = tldTd.find("a").text_content().strip().strip('.').lower()
+				buyPrice = float(buyTd.attrib['data-order'])
+				renewPrice = float(renewTd.attrib['data-order'])
+
+				self.all_tlds.append(DomainInfo(tldName, buyPrice, renewPrice))
+
+			self.all_tlds.sort(key=lambda x: x.name)
+			print('got %d' % len(self.all_tlds), file=sys.stderr)
 			return True
 		except Exception as e:
 			print('cannot fetch', file=sys.stderr)
@@ -204,7 +214,7 @@ class DomainCmd(Cmd):
 			return False
 
 	def do_tld(self, arg):
-		self.do_tlds()
+		self.do_tlds(None)
 
 	def do_tlds(self, arg):
 		tlds = self._get_valid_tlds()
@@ -216,16 +226,16 @@ class DomainCmd(Cmd):
 			if not self._fetch_tlds():
 				return None
 
-		return [tld for tld in self.all_tlds if self._tld_valid(tld)]
+		return [tld.name for tld in self.all_tlds if self._tld_valid(tld)]
 
 	def _tld_valid(self, tld):
-		if not self.include_sld and '.' in tld:
+		if not self.include_sld and '.' in tld.name:
 			return False
 
-		if not self.include_intl and re.search(r'[^a-z.]', tld):
+		if not self.include_intl and re.search(r'[^a-z.]', tld.name):
 			return False
 
-		if self.max_length is not None and len(tld) > self.max_length:
+		if self.max_length is not None and len(tld.name) > self.max_length:
 			return False
 
 		return True
