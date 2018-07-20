@@ -231,6 +231,7 @@ class DomainCmd(Cmd):
 	def do_tlds(self, arg):
 		tlds = self._get_valid_tlds()
 		if tlds:
+			self._sort_domain_list(tlds)
 			self._print_domain_header()
 			for tld in tlds:
 				self._print_domain_entry(tld)
@@ -311,7 +312,7 @@ class DomainCmd(Cmd):
 			self._run_domain_threads(self._check_and_update_sorted, to_check)
 
 			if not self.check_aborted:
-				self._sort_domain_list()
+				self._sort_domain_list(self.domain_info)
 				self._print_process()
 				self._print_domain_header()
 				for info in self.domain_info:
@@ -347,7 +348,7 @@ class DomainCmd(Cmd):
 		print('domain\trenew\torder')
 
 	def _print_domain_entry(self, info):
-		print('%s\t%s\t%s' % (info.name, info.renew, info.order))
+		print('%s\t%.2f\t%.2f' % (info.name, info.renew, info.order))
 
 	def _domain_check_list(self, domains):
 		to_check = set()
@@ -458,8 +459,10 @@ class DomainCmd(Cmd):
 
 		return True
 
-	def _sort_domain_list(self):
-		if self.sorting == Sorting.PRICE:
+	def _sort_domain_list(self, domains):
+		if self.sorting == Sorting.ALPHABETIC:
+			func = lambda x: x.name
+		elif self.sorting == Sorting.PRICE:
 			func = lambda x: max(x.renew, x.order)
 		elif self.sorting == Sorting.RENEW:
 			func = lambda x: x.renew
@@ -468,9 +471,9 @@ class DomainCmd(Cmd):
 		else:
 			raise Exception('What the fuck %s' % str(self.sorting))
 
-		self.domain_info.sort(key=func)
+		domains.sort(key=func)
 		if not self.sort_ascendending:
-			self.domain_info.reverse()
+			domains.reverse()
 
 	def do_exit(self, arg):
 		sys.exit(0)
