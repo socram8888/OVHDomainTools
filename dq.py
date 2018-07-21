@@ -79,6 +79,14 @@ class DomainCmd(Cmd):
 		self.failed_domains = 0
 		self.check_aborted = False
 
+	def cmdloop(self, *args):
+		while True:
+			try:
+				super().cmdloop(*args)
+			except KeyboardInterrupt:
+				print('', file=sys.stderr)
+				pass
+
 	# Do nothing on empty line
 	def emptyline(self):
 		return
@@ -87,7 +95,7 @@ class DomainCmd(Cmd):
 		if arg == 'EOF':
 			sys.exit(0)
 
-		self.do_check(arg)
+		super().default(arg)
 
 	def do_maxorder(self, arg):
 		self._update_optional_number('max_order', int, 'Max order price', 0, arg)
