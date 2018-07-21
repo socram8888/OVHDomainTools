@@ -83,12 +83,6 @@ class DomainCmd(Cmd):
 	def emptyline(self):
 		return
 
-	def default(self, arg):
-		if arg == 'EOF':
-			sys.exit(0)
-
-		self.do_check(arg)
-
 	def do_maxorder(self, arg):
 		self._update_optional_number('max_order', int, 'Max order price', 0, arg)
 		self.max_renew = self.max_order
