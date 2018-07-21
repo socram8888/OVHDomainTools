@@ -348,6 +348,11 @@ class DomainCmd(Cmd):
 		to_check = set()
 		valid_tlds = None
 		for domain in domains:
+			encoded = domain.encode('idna').decode('ascii').lower()
+			if not re.match(r'([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$', encoded):
+				print('Invalid domain "%s"' % domain, file=sys.stderr)
+				continue
+
 			if '.' in domain:
 				to_check.add(domain)
 				continue
