@@ -216,17 +216,19 @@ class DomainCmd(Cmd):
 
 		try:
 			page = lxml.html.fromstring(requests.get('https://www.ovh.es/dominios/precios/').content)
-			self.all_tlds = []
+			tlds = []
 			for extensionTr in page.xpath("//table[@id='dataTable']/tbody/tr"):
 				tldTd, buyTd, renewTd = extensionTr.findall("td")[:3]
 				tldName = tldTd.find("a").text_content().strip().strip('.').lower()
 				buyPrice = float(buyTd.attrib['data-order'])
 				renewPrice = float(renewTd.attrib['data-order'])
 
-				self.all_tlds.append(DomainInfo(tldName, buyPrice, renewPrice))
+				tlds.append(DomainInfo(tldName, buyPrice, renewPrice))
 
-			self.all_tlds.sort(key=lambda x: x.name)
-			print('got %d' % len(self.all_tlds), file=sys.stderr)
+			tlds.sort(key=lambda x: x.name)
+			print('got %d' % len(tlds), file=sys.stderr)
+
+			self.all_tlds = tlds
 			return True
 		except Exception as e:
 			print('cannot fetch', file=sys.stderr)
