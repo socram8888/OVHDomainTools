@@ -95,11 +95,13 @@ class DomainCmd(Cmd):
 		if arg == 'EOF':
 			sys.exit(0)
 
-		super().default(arg)
+		self.do_check(arg)
 
 	def do_maxorder(self, arg):
 		self._update_optional_number('max_order', int, 'Max order price', 0, arg)
-		self.max_renew = self.max_order
+
+	def do_maxrenew(self, arg):
+		self._update_optional_number('max_renew', int, 'Max renew price', 0, arg)
 
 	def do_maxlen(self, arg):
 		self._update_optional_number('max_length', int, 'Max TLD length', 4, arg)
@@ -289,10 +291,10 @@ class DomainCmd(Cmd):
 
 		to_check = set()
 		for tld in valid_tlds:
-			tldend = tld.replace('.', '')
+			tldend = tld.name.replace('.', '')
 			for name in names:
 				if name.endswith(tldend):
-					to_check.add('%s.%s' % (name[:-len(tldend)], tld))
+					to_check.add('%s.%s' % (name[:-len(tldend)], tld.name))
 
 		return sorted(to_check)
 
