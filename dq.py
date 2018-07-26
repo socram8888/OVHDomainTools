@@ -293,6 +293,7 @@ class DomainCmd(Cmd):
 		for tld in valid_tlds:
 			tldend = tld.name.replace('.', '')
 			for name in names:
+				name = name.casefold()
 				if name.endswith(tldend):
 					to_check.add('%s.%s' % (name[:-len(tldend)], tld.name))
 
