@@ -294,7 +294,7 @@ class DomainCmd(Cmd):
 			tldend = tld.name.replace('.', '')
 			for name in names:
 				name = name.casefold()
-				if name.endswith(tldend):
+				if len(name) > tldend and name.endswith(tldend):
 					to_check.add('%s.%s' % (name[:-len(tldend)], tld.name))
 
 		return sorted(to_check)
