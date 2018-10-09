@@ -438,7 +438,7 @@ class DomainCmd(Cmd):
 			return None
 
 		# Skip if not available
-		if not info['orderable']:
+		if not info['orderable'] or info['action'] != 'create':
 			return None
 
 		# Extract price
