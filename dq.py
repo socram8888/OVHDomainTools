@@ -104,7 +104,7 @@ class DomainCmd(Cmd):
 		self._update_optional_number('max_renew', int, 'Max renew price', 0, arg)
 
 	def do_maxlen(self, arg):
-		self._update_optional_number('max_length', int, 'Max TLD length', 4, arg)
+		self._update_optional_number('max_length', int, 'Max TLD length', 2, arg)
 
 	def _update_optional_number(self, field, fieldType, fieldName, minValue, arg):
 		arg = arg.strip().casefold()
