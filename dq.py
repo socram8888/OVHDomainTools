@@ -7,7 +7,10 @@ from datetime import datetime
 from datetime import timedelta
 from enum import Enum
 from threading import Lock
+import argparse
+import configparser
 import lxml.html
+import os
 import json
 import re
 import requests
@@ -52,11 +55,15 @@ class DomainCmd(Cmd):
 	RESETLINE = "\x1b[1K\r"
 	CART_TIMEOUT = timedelta(minutes=5)
 
-	def __init__(self):
+	def __init__(self, config_file):
 		super().__init__()
 
-		# Domain filtering
+		self.config_file = config_file
+
+		# Full list of TLDs
 		self.all_tlds = None
+
+		# Domain filtering
 		self.include_intl = False
 		self.include_sld = False
 		self.max_length = None
@@ -65,7 +72,7 @@ class DomainCmd(Cmd):
 
 		# Sorting
 		self.sorting = Sorting.ALPHABETIC
-		self.sort_ascendending = True
+		self.sort_ascending = True
 
 		# Cart id
 		self.cart_id = None
@@ -78,6 +85,46 @@ class DomainCmd(Cmd):
 		self.domain_info = None
 		self.failed_domains = 0
 		self.check_aborted = False
+
+	def load_config(self):
+		if self.config_file is not None:
+			parser = configparser.ConfigParser()
+			parser.read(self.config_file)
+
+			if parser.has_section('filter'):
+				self.include_intl = parser.getboolean('filter', 'include_intl', fallback=self.include_intl)
+				self.include_sld = parser.getboolean('filter', 'include_sld', fallback=self.include_sld)
+				self.max_length = parser.getint('filter', 'max_length', fallback=self.max_length)
+				self.max_renew = parser.getfloat('filter', 'max_renew', fallback=self.max_renew)
+				self.max_order = parser.getfloat('filter', 'max_order', fallback=self.max_order)
+
+			if parser.has_section('sorting'):
+				if parser.has_option('sorting', 'sorting'):
+					self.sorting = Sorting[parser.get('sorting', 'sorting')]
+				self.sort_ascending = parser.getboolean('sorting', 'ascending', fallback=self.sort_ascending)
+
+	def save_config(self):
+		if self.config_file is not None:
+			writer = configparser.ConfigParser()
+			writer.add_section('filter')
+			writer.set('filter', 'include_intl', str(self.include_intl))
+			writer.set('filter', 'include_sld', str(self.include_sld))
+			if self.max_length is not None:
+				writer.set('filter', 'max_length', str(self.max_length))
+			if self.max_renew is not None:
+				writer.set('filter', 'max_renew', str(self.max_renew))
+			if self.max_order is not None:
+				writer.set('filter', 'max_order', str(self.max_order))
+
+			writer.add_section('sorting')
+			writer.set('sorting', 'sorting', self.sorting.name)
+			writer.set('sorting', 'ascending', str(self.sort_ascending))
+
+			try:
+				with open(self.config_file, 'w') as f:
+					writer.write(f)
+			except Exception as e:
+				print('Failed to save configuration', file=sys.stderr)
 
 	def cmdloop(self, *args):
 		while True:
@@ -93,6 +140,7 @@ class DomainCmd(Cmd):
 
 	def default(self, arg):
 		if arg == 'EOF':
+			self.save_config()
 			sys.exit(0)
 
 		self.do_check(arg)
@@ -206,9 +254,9 @@ class DomainCmd(Cmd):
 					return
 
 			self.sorting = new_sorting
-			self.sort_ascendending = new_ascending
+			self.sort_ascending = new_ascending
 
-		print('Sorting by %s %s' % (self.sorting.name.lower(), 'ascending' if self.sort_ascendending else 'descending'))
+		print('Sorting by %s %s' % (self.sorting.name.lower(), 'ascending' if self.sort_ascending else 'descending'))
 
 	def do_updatetld(self, arg):
 		self._fetch_tlds()
@@ -491,14 +539,29 @@ class DomainCmd(Cmd):
 			raise Exception('What the fuck %s' % str(self.sorting))
 
 		domains.sort(key=func)
-		if not self.sort_ascendending:
+		if not self.sort_ascending:
 			domains.reverse()
 
 	def do_exit(self, arg):
+		self.save_config()
 		sys.exit(0)
 
 	def do_quit(self, arg):
+		self.save_config()
 		sys.exit(0)
 
 if __name__ == '__main__':
-	DomainCmd().cmdloop()
+	parser = argparse.ArgumentParser(description='Queries domain status using OVH\'s API.')
+	parser.add_argument('--noconfig', help='Disables user configuration', action='store_true')
+	args = parser.parse_args()
+
+	configFile = None
+	if not args.noconfig:
+		if os.name == 'nt':
+			configFile = os.path.join(os.getenv('APPDATA'), 'ovhdomainquery.ini')
+		else:
+			configFile = os.path.expanduser('~/.ovhdomainquery.ini')
+
+	cmd = DomainCmd(configFile)
+	cmd.load_config()
+	cmd.cmdloop()
